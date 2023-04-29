@@ -1,5 +1,7 @@
 import akshare as ak
 import datetime
+import pandas as pd
+
 
 
 
@@ -17,21 +19,33 @@ def eval_market(market = "上证", num_years=10):
 
     df2 = pe_df[pe_df['日期'] > hist_start]
 
-    ak.stock_market_pb_lg("上证")  # "上证", "深证", "创业板", "科创版"
+    pe_summary_df = get_percentile(df2, index_name='平均市盈率')
 
-    return get_percentile(df2)
+    pb_df = ak.stock_market_pb_lg(market)  # "上证", "深证", "创业板", "科创版"
 
-def get_percentile(df):
-    row_data = {}
-    df['rank'] = df['平均市盈率'].rank(pct=True)
-    print(df)
-    temp_df = df.describe()
+    df3 = pb_df[pb_df['日期'] > hist_start]
+    pb_summary_df = get_percentile(df3, index_name='市净率')
 
-    temp_df.loc[len(temp_df.index)] = [float(df.tail(1)['指数'].values), float(df.tail(1)['平均市盈率'].values),
+    df = ak.stock_index_pe_lg("上证50")  # {"上证50", "沪深300", "上证380", "创业板50", "中证500", "上证180", "深证红利", "深证100", "中证1000", "上证红利", "中证100", "中证800"}
+    df2 = df[df['日期'] > hist_start]
+    pe_summary_df = get_percentile(df2, index_name='静态市盈率')
+
+    return pe_summary_df
+
+
+def get_percentile(df, index_name='平均市盈率'):
+
+    df['rank'] = df[index_name].rank(pct=True)
+    # print(df)
+    temp_df = df.describe()[['指数', index_name, 'rank']]
+
+    temp_df.loc[len(temp_df.index)] = [float(df.tail(1)['指数'].values), float(df.tail(1)[index_name].values),
                            float(df.tail(1)['rank'].values)]
-    temp_df = temp_df.rename(index={8: df.tail(1)['日期']})
+    temp_df = temp_df.rename(index={len(temp_df.index) - 1: df.tail(1)['日期']})
 
     return temp_df
+
+# res = eval_market(market = "上证", num_years=10)
 
 
 def eval_sector():
@@ -47,7 +61,34 @@ def eval_sector():
     "index_level_one_hist_sw"  # 申万指数-指数发布-指数体系-一级行业
     "index_market_representation_hist_sw"  # 申万指数-指数发布-指数体系-市场表征
     "index_style_index_hist_sw"  # 申万指数-指数发布-指数体系-风格指数
+
+    "stock_board_industry_cons_ths"  # 同花顺-行业板块-成份股
+    "stock_board_industry_index_ths"  # 同花顺-行业板块-指数日频数据
+
+    "stock_board_industry_cons_em"  # 行业板块-板块成份
+    "stock_board_industry_hist_em"  # 行业板块-历史行情
+    "stock_board_industry_hist_min_em"  # 行业板块-分时历史行情
+    "stock_board_industry_name_em"  # 行业板块-板块名称
     '''
+    today = datetime.date.today()
+    if today.weekday() >= 5:
+        today = today.fromordinal(today.toordinal() - (today.weekday() - 4))
+    # 股票-行业市盈率
+    # {"证监会行业分类", "国证行业分类"}
+    ak.stock_industry_pe_ratio_cninfo(symbol='证监会行业分类', date=today.strftime('%Y%m%d'))
+
+    # 行业板块-历史行情
+    ak.stock_board_industry_hist_em()
+
+    # 行业板块-板块成份
+    ak.stock_board_industry_cons_em()
+
+    # ak.sw_index_daily()
+
+    ak.sw_index_first_info()
+
+    ak.sw_index_third_info()
+    ak.sw_index_third_cons()
 
     df = ak.stock_sector_spot('行业')
     ak.sw_index_daily_indicator()
@@ -62,13 +103,31 @@ def eval_sector():
 
     ak.stock_sector_detail()
 
+
+def eval_industry(thres=0.5):
+    df = ak.sw_index_first_info()
+    print(df.head())
+    df2 = df[(df['TTM(滚动)市盈率分位数'] < thres) & (df['市净率分位数'] < thres)]
+
+    # 成分股
+    # ak.sw_index_third_cons("801120.SI")
+    ak.sw_index_third_cons('801950.SI').sort_values(by='市值', ascending=False)
+
+    return df2
+
+
+
+
+eval_industry()
+
+
 def eval_stock(code='600519'):
     '''
     指标: PB, PE, EPS, 夏普比率、最大回撤
     :param code:
     :return:
     '''
-    # 财务指标数据 工行财报
+    # 财务指标数据 工行财报, 历史
     df = ak.stock_financial_analysis_indicator(code)
 
     # 财务摘要
@@ -77,7 +136,9 @@ def eval_stock(code='600519'):
     # 三大财务报表
     df3 = ak.stock_financial_report_sina(code)
 
-    ak.stock_a_lg_indicator
+
+
+
 
 def eval_portfolio():
     '''
