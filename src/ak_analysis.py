@@ -116,9 +116,7 @@ def eval_industry(thres=0.5):
     return df2
 
 
-
-
-eval_industry()
+# eval_industry()
 
 
 def eval_stock(code='601225.SH', sector='801950.SI'):
@@ -127,8 +125,8 @@ def eval_stock(code='601225.SH', sector='801950.SI'):
     :param code:
     :return:
     '''
-    code = '601225.SH'
-    sector = '801950.SI'
+    # code = '601225.SH'
+    # sector = '801950.SI'
     int_code = code.split('.')[0]
     sector_df = ak.sw_index_third_cons(sector).sort_values(by='市值', ascending=False)
     temp_df1 = sector_df[sector_df['股票代码'] == code]
@@ -161,10 +159,111 @@ def eval_stock(code='601225.SH', sector='801950.SI'):
     # 三大财务报表
     fin_df3 = ak.stock_financial_report_sina(int_code)
 
-    return res_df2
+    a = fin_df3[['流动资产合计', '非流动资产', '应收账款', '无形资产', '商誉']].astype("float") / (1e8)
+    a['股票代码'] = code
+    res_df3 = pd.merge(res_df2, a.head(1), on="股票代码", how="left")
+
+    score_df = eval_stock_metric(res_df3)
+
+    return score_df
 
 
-stock_df = eval_stock(code='601225.SH', sector='801950.SI')
+def eval_stock_metric(df):
+    total_score = 0
+    a = float(df[['资产负债率(%)']].values)
+    if a < 35:
+        score = 100
+    elif a > 50:
+        score = 0
+    else:
+        score = 100 - 50/15 * (a-35)
+    df['资产负债率_score'] = score
+    total_score += score * 0.05
+
+    a = float(df[['流动比率']].values)
+    b = float(df[['速动比率']].values)
+    if a >= 1.5 and b > 1:
+        score = 100
+    elif a >= 1.5 or b > 1:
+        score = 75
+    else:
+        score = 0
+    df['偿债能力_score'] = score
+    total_score += score * 0.05
+
+    # TODO
+    a = float(df[['存货周转率(次)']].values)
+    b = float(df[['总资产周转率(次)']].values)
+    c = float(df[['应收账款周转率(次)']].values)
+    # if a >= 1.5 and b > 1:
+    #     score = 100
+    # elif a >= 1.5 or b > 1:
+    #     score = 75
+    # else:
+    #     score = 0
+    score = 0
+    df['经营能力_score'] = score
+    total_score += score * 0.05
+
+    a = float(df[['净资产收益率(%)']].values)
+    if a > 16:
+        score = 100
+    elif a < 6:
+        score = 0
+    else:
+        score = 50 + 16 / 6 * a
+    df['ROE_score'] = score
+    total_score += score * 0.05
+
+    a = float(df[['净利润增长率(%)']].values)
+    if a > 30:
+        score = 100
+    elif a < 0:
+        score = 0
+    else:
+        score = 50 + 50/30 * a
+    df['净利润增长率_score'] = score
+    total_score += score * 0.05
+
+    num = float(df[['无形资产']].values)
+    denom = float(df[['股东权益合计(净资产)']].values)
+    a = num/denom
+    if a < 3:
+        score = 100
+    elif a > 12:
+        score = 0
+    else:
+        score = 100 - 50 / (12 - 3) * (a - 3)
+    df['无形资产占比_score'] = score
+    total_score += score * 0.05
+
+    a = float(df[['市净率']].values)
+    if a < 1:
+        score = 100
+    elif a > 2.5:
+        score = 0
+    else:
+        score = 100 - 50 / (2.5-1) * (a - 1)
+    df['市净率_score'] = score
+    total_score += score * 0.1
+
+    a = float(df[['市盈率']].values)
+    if a < 10:
+        score = 100
+    elif a > 25:
+        score = 0
+    else:
+        score = 100 - 50 / (25 - 10) * (a - 10)
+    df['市盈率_score'] = score
+    total_score += score * 0.1
+
+    df['total_score'] = total_score
+    df['max_score'] = 0.45
+
+    return df
+
+
+# stock_df = eval_stock(code='601225.SH', sector='801950.SI')
 
 
 def eval_portfolio():
@@ -197,3 +296,24 @@ def test_api():
 
     stock_zh_a_hist_df = ak.stock_zh_a_hist(symbol="000001", period="daily", start_date="20170301", end_date='20210907',
                                             adjust="")
+
+
+def rank_stocks():
+    res_df = []
+    cands = [('601225.SH', '801950.SI', '陕西煤业'), ('601088.SH', '801950.SI', '中国神华'),
+             ('600188.SH', '801950.SI', '兖矿能源'), ('601898.SH', '801950.SI', '中煤能源'),
+             ('601857.SH', '801960.SI', '中国石油'),
+             ('601899.SH', '801050.SI', '紫金矿业'),
+             ('600519.SH', '801120.SI', '贵州茅台'), ('000858.SZ', '801120.SI', '五粮液'),
+             ('002594.SZ', '801880.SI', '比亚迪'),
+             ('000651.SZ', '801110.SI', '格力电器'), ('000333.SZ', '801110.SI', '美的集团'),
+             ]
+    for stock, industry, name in cands:
+        stock_df = eval_stock(code=stock, sector=industry)
+        res_df.append(stock_df)
+
+    rank_df = pd.concat(res_df)
+    return rank_df
+
+
+rank_df = rank_stocks()
