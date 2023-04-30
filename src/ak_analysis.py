@@ -2,8 +2,8 @@ import akshare as ak
 import datetime
 import pandas as pd
 
-
-
+pd.set_option('display.max_columns',300)
+pd.set_option('display.max_rows', 300)
 
 def eval_market(market = "上证", num_years=10):
     '''
@@ -121,23 +121,50 @@ def eval_industry(thres=0.5):
 eval_industry()
 
 
-def eval_stock(code='600519'):
+def eval_stock(code='601225.SH', sector='801950.SI'):
     '''
     指标: PB, PE, EPS, 夏普比率、最大回撤
     :param code:
     :return:
     '''
+    code = '601225.SH'
+    sector = '801950.SI'
+    int_code = code.split('.')[0]
+    sector_df = ak.sw_index_third_cons(sector).sort_values(by='市值', ascending=False)
+    temp_df1 = sector_df[sector_df['股票代码'] == code]
+
     # 财务指标数据 工行财报, 历史
-    df = ak.stock_financial_analysis_indicator(code)
+    fin_df = ak.stock_financial_analysis_indicator(int_code)
+    fin_df['股票代码'] = code
+    temp_df2 = fin_df[['股票代码', '日期', '每股收益_调整后(元)', '资产负债率(%)', '净资产收益率(%)', '净利润增长率(%)', '主营业务利润率(%)', '总资产利润率(%)',
+            '应收账款周转率(次)', '存货周转率(次)', '总资产周转率(次)']]
+
+    res_df = pd.merge(temp_df1, temp_df2.head(1), on="股票代码", how="left")
 
     # 财务摘要
-    df = ak.stock_financial_abstract(code)
+    fin_df2 = ak.stock_financial_abstract(int_code)
+    temp_df3 = fin_df2[(fin_df2['指标'] == '营业总收入') | (fin_df2['指标'] == '净利润') | (fin_df2['指标'] == '经营现金流量净额') |
+                       (fin_df2['指标'] == '毛利率') |
+                       (fin_df2['指标'] == '流动比率') | (fin_df2['指标'] == '速动比率') | (fin_df2['指标'] == '股东权益合计(净资产)')]
+
+    a = temp_df3.iloc[:, [1,2]]
+    a = a.set_index('指标')
+    a = a.T
+    a['股票代码'] = code
+    a['经营现金流量净额'] = a['经营现金流量净额'].astype('float') / (1e8)
+    a['营业总收入'] = a['营业总收入'].astype('float') / (1e8)
+    a['净利润'] = a['净利润'].astype('float') / (1e8)
+    a['股东权益合计(净资产)'] = a['股东权益合计(净资产)'].astype('float') / (1e8)
+
+    res_df2 = pd.merge(res_df, a, on="股票代码", how="left")
 
     # 三大财务报表
-    df3 = ak.stock_financial_report_sina(code)
+    fin_df3 = ak.stock_financial_report_sina(int_code)
+
+    return res_df2
 
 
-
+stock_df = eval_stock(code='601225.SH', sector='801950.SI')
 
 
 def eval_portfolio():
