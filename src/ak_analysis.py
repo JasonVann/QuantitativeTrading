@@ -1,11 +1,13 @@
 import akshare as ak
 import datetime
 import pandas as pd
+import numpy as np
 
 pd.set_option('display.max_columns',300)
 pd.set_option('display.max_rows', 300)
 
-def eval_market(market = "上证", num_years=10):
+
+def eval_market(market="上证", num_years=10):
     '''
     Evaluate PB/PE of the market
     # "上证", "深证", "创业板", "科创版"
@@ -131,8 +133,11 @@ def eval_stock(code='601225.SH', sector='801950.SI'):
     sector_df = ak.sw_index_third_cons(sector).sort_values(by='市值', ascending=False)
     temp_df1 = sector_df[sector_df['股票代码'] == code]
 
+    temp_df1['总市值'] = sector_df['市值'].sum()
+
     # 财务指标数据 工行财报, 历史
     fin_df = ak.stock_financial_analysis_indicator(int_code)
+
     fin_df['股票代码'] = code
     temp_df2 = fin_df[['股票代码', '日期', '每股收益_调整后(元)', '资产负债率(%)', '净资产收益率(%)', '净利润增长率(%)', '主营业务利润率(%)', '总资产利润率(%)',
             '应收账款周转率(次)', '存货周转率(次)', '总资产周转率(次)']]
@@ -158,8 +163,14 @@ def eval_stock(code='601225.SH', sector='801950.SI'):
 
     # 三大财务报表
     fin_df3 = ak.stock_financial_report_sina(int_code)
+    a = fin_df3[['报告日']]
 
-    a = fin_df3[['流动资产合计', '非流动资产', '应收账款', '无形资产', '商誉']].astype("float") / (1e8)
+    for metric in ['资产', '流动资产合计', '非流动资产', '应收账款', '无形资产', '商誉']:
+        if metric in fin_df3.columns:
+            a[metric] = fin_df3[[metric]].astype("float") / (1e8)
+        else:
+            a[metric] = np.nan
+
     a['股票代码'] = code
     res_df3 = pd.merge(res_df2, a.head(1), on="股票代码", how="left")
 
@@ -168,9 +179,20 @@ def eval_stock(code='601225.SH', sector='801950.SI'):
     return score_df
 
 
+def parse_metric(df, name):
+    temp = df[[name]].values
+    # print(177, temp, type(temp))
+    if pd.isna(temp) or temp.size == 0 or temp == '--' or temp == '':
+        val = 0
+    else:
+        val = float(temp)
+    return val
+
+
 def eval_stock_metric(df):
     total_score = 0
-    a = float(df[['资产负债率(%)']].values)
+    a = parse_metric(df, '资产负债率(%)')
+
     if a < 35:
         score = 100
     elif a > 50:
@@ -180,8 +202,9 @@ def eval_stock_metric(df):
     df['资产负债率_score'] = score
     total_score += score * 0.05
 
-    a = float(df[['流动比率']].values)
-    b = float(df[['速动比率']].values)
+    a = parse_metric(df, '流动比率')
+    b = parse_metric(df, '速动比率')
+
     if a >= 1.5 and b > 1:
         score = 100
     elif a >= 1.5 or b > 1:
@@ -192,9 +215,9 @@ def eval_stock_metric(df):
     total_score += score * 0.05
 
     # TODO
-    a = float(df[['存货周转率(次)']].values)
-    b = float(df[['总资产周转率(次)']].values)
-    c = float(df[['应收账款周转率(次)']].values)
+    a = parse_metric(df, '存货周转率(次)')
+    b = parse_metric(df, '总资产周转率(次)')
+    c = parse_metric(df, '应收账款周转率(次)')
     # if a >= 1.5 and b > 1:
     #     score = 100
     # elif a >= 1.5 or b > 1:
@@ -205,7 +228,7 @@ def eval_stock_metric(df):
     df['经营能力_score'] = score
     total_score += score * 0.05
 
-    a = float(df[['净资产收益率(%)']].values)
+    a = parse_metric(df, '净资产收益率(%)')
     if a > 16:
         score = 100
     elif a < 6:
@@ -215,7 +238,7 @@ def eval_stock_metric(df):
     df['ROE_score'] = score
     total_score += score * 0.05
 
-    a = float(df[['净利润增长率(%)']].values)
+    a = parse_metric(df, '净利润增长率(%)')
     if a > 30:
         score = 100
     elif a < 0:
@@ -225,8 +248,8 @@ def eval_stock_metric(df):
     df['净利润增长率_score'] = score
     total_score += score * 0.05
 
-    num = float(df[['无形资产']].values)
-    denom = float(df[['股东权益合计(净资产)']].values)
+    num = parse_metric(df, '无形资产')
+    denom = parse_metric(df, '股东权益合计(净资产)')
     a = num/denom
     if a < 3:
         score = 100
@@ -237,7 +260,7 @@ def eval_stock_metric(df):
     df['无形资产占比_score'] = score
     total_score += score * 0.05
 
-    a = float(df[['市净率']].values)
+    a = parse_metric(df, '市净率')
     if a < 1:
         score = 100
     elif a > 2.5:
@@ -247,7 +270,7 @@ def eval_stock_metric(df):
     df['市净率_score'] = score
     total_score += score * 0.1
 
-    a = float(df[['市盈率']].values)
+    a = parse_metric(df, '市盈率')
     if a < 10:
         score = 100
     elif a > 25:
@@ -257,8 +280,20 @@ def eval_stock_metric(df):
     df['市盈率_score'] = score
     total_score += score * 0.1
 
+    # Custom metrics
+    # TODO 市占率；
+    a = parse_metric(df, '净利润增长率(%)')
+    if a > 30:
+        score = 100
+    elif a < 0:
+        score = 0
+    else:
+        score = 50 + 50 / 30 * a
+    df['净利润增长率_score'] = score
+    total_score += score * 0.05
+
     df['total_score'] = total_score
-    df['max_score'] = 0.45
+    df['max_score'] = 45
 
     return df
 
@@ -302,13 +337,63 @@ def rank_stocks():
     res_df = []
     cands = [('601225.SH', '801950.SI', '陕西煤业'), ('601088.SH', '801950.SI', '中国神华'),
              ('600188.SH', '801950.SI', '兖矿能源'), ('601898.SH', '801950.SI', '中煤能源'),
-             ('601857.SH', '801960.SI', '中国石油'),
-             ('601899.SH', '801050.SI', '紫金矿业'),
+
+             ('601668.SH', '801720.SI', '中国建筑'), ('601390.SH', '801720.SI', '中国中铁'),
+             ('601800.SH', '801720.SI', '中国交建'),
+             ('601766.SH', '801890.SI', '中国中车'),
+
+             ('002714.SZ', '801010.SI', '牧原股份'),
+
+             ('601857.SH', '801960.SI', '中国石油'), ('600028.SH', '801960.SI', '中国石油'),
+             ('600938.SH', '801960.SI', '中国海油'),
+
+             ('601899.SH', '801050.SI', '紫金矿业'), ('600547.SH', '801050.SI', '山东黄金'),
+             ('002466.SZ', '801050.SI', '天齐锂业'), ('002460.SZ', '801050.SI', '赣锋锂业'),
+
+             ('601138.SH', '801080.SI', '工业富联'), ('002475.SZ', '801080.SI', '立讯精密'),
+             ('002371.SZ', '801080.SI', '北方华创'), ('000725.SZ', '801080.SI', '京东方A'),
+             ('603501.SH', '801080.SI', '韦尔股份'), ('002049.SZ', '801080.SI', '紫光国微'),
+             # ('688981.SH', '801080.SI', '中芯国际'),  # ??
+
+             ('300750.SZ', '801730.SI', '宁德时代'), ('300014.SZ', '801730.SI', '亿纬锂能'),
+
+             ('601888.SH', '801200.SI', '中国中免'),
+
+             ('601318.SH', '801790.SI', '中国平安'), ('601628.SH', '801790.SI', '中国人寿'),
+             ('600030.SH', '801790.SI', '中信证券'), ('600030.SH', '801790.SI', '中金公司'),
+
+             ('600585.SH', '801710.SI', '海螺水泥'),
+
+             ('601398.SH', '801780.SI', '工商银行'), ('601939.SH', '801780.SI', '建设银行'),
+             ('600036.SH', '801780.SI', '招商银行'),
+
+             ('000538.SZ', '801150.SI', '云南白药'), ('603259.SH', '801150.SI', '药明康德'),
+
+             ('600900.SH', '801160.SI', '长江电力'), ('600905.SH', '801160.SI', '三峡能源'),
+             ('003816.SZ', '801160.SI', '中国广核'), ('601985.SH', '801160.SI', '中国核电'),
+
+             ('601919.SH', '801170.SI', '中远海控'), ('600018.SH', '801170.SI', '上港集团'),
+             ('601006.SH', '801170.SI', '大秦铁路'), ('001965.SZ', '801170.SI', '招商公路'),
+
+             ('000002.SZ', '801180.SI', '万科A'),   ('600048.SH', '801180.SI', '保利发展'),
+
+             ('600760.SH', '801740.SI', '中航沈飞'), ('600893.SH', '801740.SI', '航发动力'),
+
+             ('002415.SZ', '801750.SI', '海康威视'), ('002230.SZ', '801750.SI', '科大讯飞'),
+             ('600941.SH', '801770.SI', '中国移动'), ('000063.SZ', '801770.SI', '中国联通'),
+             ('601728.SH', '801770.SI', '中国电信'), ('000063.SZ', '801770.SI', '中兴通讯'),
+
              ('600519.SH', '801120.SI', '贵州茅台'), ('000858.SZ', '801120.SI', '五粮液'),
-             ('002594.SZ', '801880.SI', '比亚迪'),
+             ('600887.SH', '801120.SI', '伊利股份'),
+
+             ('002594.SZ', '801880.SI', '比亚迪'),   ('600104.SH', '801880.SI', '上汽集团'),
+             ('601238.SH', '801880.SI', '广汽集团'),
+
              ('000651.SZ', '801110.SI', '格力电器'), ('000333.SZ', '801110.SI', '美的集团'),
+             ('600690.SH', '801110.SI', '海尔智家'),
              ]
     for stock, industry, name in cands:
+        print(stock, industry)
         stock_df = eval_stock(code=stock, sector=industry)
         res_df.append(stock_df)
 
@@ -316,4 +401,59 @@ def rank_stocks():
     return rank_df
 
 
+def recall_sectors():
+    '''
+    Recall excellent sectors
+    :return:
+    '''
+    return
+
+
+def recall_stocks():
+    ''' TODO
+    Recall stocks from excellent sectors, or globally great stocks
+
+    低估值召回
+    高增长召回
+    热门召回
+    龙头召回
+
+    :return:
+    '''
+
+
+    return
+
+
+def quant_engine():
+    # Step 1. 评估市场情绪
+    eval_market()
+
+    # Step 2. 评估行业
+    recall_sectors()
+
+    # Step 3. 召回股票
+    recall_stocks()
+
+    # Step 4. 股票排序
+    rank_stocks()
+
+
+def eval_strategy_hist():
+    '''
+    基于历史数据回测策略
+    :return:
+    '''
+
+
+test_data = ('002714.SZ', '801010.SI', '牧原股份')
+# test_data = ('688981.SH', '801080.SI', '中芯国际')
+test_data = ('601318.SH', '801790.SI', '中国平安')
+
+# stock_df = eval_stock(test_data[0], test_data[1])
+
+print(datetime.datetime.now())
 rank_df = rank_stocks()
+print(datetime.datetime.now())
+
+# rank_df.to_csv('../data/rank_stock.csv')
