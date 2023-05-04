@@ -131,9 +131,18 @@ def eval_stock(code='601225.SH', sector='801950.SI'):
     # sector = '801950.SI'
     int_code = code.split('.')[0]
     sector_df = ak.sw_index_third_cons(sector).sort_values(by='市值', ascending=False)
-    temp_df1 = sector_df[sector_df['股票代码'] == code]
 
-    temp_df1['总市值'] = sector_df['市值'].sum()
+    sector_df['利润'] = sector_df['市值']/sector_df['市盈率ttm']  # approx
+    sector_df['净资产'] = sector_df['市值'] / sector_df['市净率']  # approx
+
+    temp_df1 = sector_df[sector_df['股票代码'] == code].copy()
+    temp_df1['行业总市值'] = sector_df['市值'].sum()
+    temp_df1['行业总净资产'] = sector_df['净资产'].sum()
+    temp_df1['行业总利润'] = sector_df['利润'].sum()
+
+    temp_df1['市值市占率'] = temp_df1['市值'] / temp_df1['行业总市值'] * 100
+    temp_df1['净资产市占率'] = temp_df1['净资产'] / temp_df1['行业总净资产'] * 100
+    temp_df1['利润市占率'] = temp_df1['利润'] / temp_df1['行业总利润'] * 100
 
     # 财务指标数据 工行财报, 历史
     fin_df = ak.stock_financial_analysis_indicator(int_code)
@@ -163,7 +172,7 @@ def eval_stock(code='601225.SH', sector='801950.SI'):
 
     # 三大财务报表
     fin_df3 = ak.stock_financial_report_sina(int_code)
-    a = fin_df3[['报告日']]
+    a = fin_df3[['报告日']].copy()
 
     for metric in ['资产', '流动资产合计', '非流动资产', '应收账款', '无形资产', '商誉']:
         if metric in fin_df3.columns:
@@ -181,8 +190,9 @@ def eval_stock(code='601225.SH', sector='801950.SI'):
 
 def parse_metric(df, name):
     temp = df[[name]].values
+    temp2 = temp.item()
     # print(177, temp, type(temp))
-    if pd.isna(temp) or temp.size == 0 or temp == '--' or temp == '':
+    if pd.isna(temp) or temp.size == 0 or temp2 == '--' or temp2 == '':
         val = 0
     else:
         val = float(temp)
@@ -281,19 +291,38 @@ def eval_stock_metric(df):
     total_score += score * 0.1
 
     # Custom metrics
-    # TODO 市占率；
-    a = parse_metric(df, '净利润增长率(%)')
+    a = parse_metric(df, '市值市占率')
     if a > 30:
         score = 100
     elif a < 0:
         score = 0
     else:
-        score = 50 + 50 / 30 * a
-    df['净利润增长率_score'] = score
+        score = 100 / 30 * a
+    df['市值市占率_score'] = score
+    total_score += score * 0.05
+
+    a = parse_metric(df, '净资产市占率')
+    if a > 30:
+        score = 100
+    elif a < 0:
+        score = 0
+    else:
+        score = 100 / 30 * a
+    df['净资产市占率_score'] = score
+    total_score += score * 0.05
+
+    a = parse_metric(df, '利润市占率')
+    if a > 30:
+        score = 100
+    elif a < 0:
+        score = 0
+    else:
+        score = 100 / 30 * a
+    df['利润市占率_score'] = score
     total_score += score * 0.05
 
     df['total_score'] = total_score
-    df['max_score'] = 45
+    df['max_score'] = 60
 
     return df
 
@@ -452,8 +481,9 @@ test_data = ('601318.SH', '801790.SI', '中国平安')
 
 # stock_df = eval_stock(test_data[0], test_data[1])
 
-print(datetime.datetime.now())
+today = datetime.datetime.now()
+print(today)
 rank_df = rank_stocks()
 print(datetime.datetime.now())
 
-# rank_df.to_csv('../data/rank_stock.csv')
+rank_df.to_csv('../data/rank_stock_{}.csv'.format(today.strftime('%Y%m%d_%H%M')))
