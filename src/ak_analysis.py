@@ -3,6 +3,13 @@ import datetime
 import pandas as pd
 import numpy as np
 
+'''
+TODO: 
+1. 回测
+2. 开发美股评估能力
+3. 分析伯克希尔、苹果
+'''
+
 pd.set_option('display.max_columns',300)
 pd.set_option('display.max_rows', 300)
 
@@ -200,6 +207,11 @@ def parse_metric(df, name):
 
 
 def eval_stock_metric(df):
+    '''
+
+    :param df:
+    :return:
+    '''
     total_score = 0
     a = parse_metric(df, '资产负债率(%)')
 
@@ -270,26 +282,6 @@ def eval_stock_metric(df):
     df['无形资产占比_score'] = score
     total_score += score * 0.05
 
-    a = parse_metric(df, '市净率')
-    if a < 1:
-        score = 100
-    elif a > 2.5:
-        score = 0
-    else:
-        score = 100 - 50 / (2.5-1) * (a - 1)
-    df['市净率_score'] = score
-    total_score += score * 0.1
-
-    a = parse_metric(df, '市盈率')
-    if a < 10:
-        score = 100
-    elif a > 25:
-        score = 0
-    else:
-        score = 100 - 50 / (25 - 10) * (a - 10)
-    df['市盈率_score'] = score
-    total_score += score * 0.1
-
     # Custom metrics
     a = parse_metric(df, '市值市占率')
     if a > 30:
@@ -321,11 +313,60 @@ def eval_stock_metric(df):
     df['利润市占率_score'] = score
     total_score += score * 0.05
 
+    a = parse_metric(df, '市净率')
+    # if a < 1:
+    #     score = 100
+    # elif a > 2.5:
+    #     score = 0
+    # else:
+    #     score = 100 - 50 / (2.5 - 1) * (a - 1)
+    score = cal_score(a, lower_bound=1, upper_bound=2.5)
+    df['市净率_score'] = score
+    total_score += score * 0.1
+
+    score150 = cal_score(a*1.5, lower_bound=1, upper_bound=2.5)
+    df['市净率_score150'] = score150
+    total_score150 = total_score - score*0.1 + score150 * 0.1
+
+    score200 = cal_score(a * 2.0, lower_bound=1, upper_bound=2.5)
+    df['市净率_score200'] = score200
+    total_score200 = total_score - score*0.1 + score200 * 0.1
+
+    a = parse_metric(df, '市盈率')
+    if a < 10:
+        score = 100
+    elif a > 25:
+        score = 0
+    else:
+        score = 100 - 50 / (25 - 10) * (a - 10)
+    df['市盈率_score'] = score
+    total_score += score * 0.1
+
+    score150 = cal_score(a * 1.5, lower_bound=10, upper_bound=25)
+    df['市盈率_score150'] = score150
+    total_score150 += score150 * 0.1
+
+    score200 = cal_score(a * 2.0, lower_bound=10, upper_bound=25)
+    df['市盈率_score200'] = score200
+    total_score200 += score200 * 0.1
+
     df['total_score'] = total_score
     df['max_score'] = 60
 
+    df['total_score150'] = total_score150
+    df['total_score200'] = total_score200
+
     return df
 
+
+def cal_score(a, lower_bound, upper_bound):
+    if a < lower_bound:
+        score = 100
+    elif a > upper_bound:
+        score = 0
+    else:
+        score = 100 - 50 / (upper_bound - lower_bound) * (a - lower_bound)
+    return score
 
 # stock_df = eval_stock(code='601225.SH', sector='801950.SI')
 
@@ -368,7 +409,7 @@ def rank_stocks():
              ('600188.SH', '801950.SI', '兖矿能源'), ('601898.SH', '801950.SI', '中煤能源'),
 
              ('601668.SH', '801720.SI', '中国建筑'), ('601390.SH', '801720.SI', '中国中铁'),
-             ('601800.SH', '801720.SI', '中国交建'),
+             ('601800.SH', '801720.SI', '中国交建'), ('601669.SH', '801720.SI', '中国交建'),
              ('601766.SH', '801890.SI', '中国中车'),
 
              ('002714.SZ', '801010.SI', '牧原股份'),
@@ -486,4 +527,4 @@ print(today)
 rank_df = rank_stocks()
 print(datetime.datetime.now())
 
-rank_df.to_csv('../data/rank_stock_{}.csv'.format(today.strftime('%Y%m%d_%H%M')))
+rank_df.to_csv('../data/rank_stock_ratio_{}.csv'.format(today.strftime('%Y%m%d_%H%M')))
