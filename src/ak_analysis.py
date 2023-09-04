@@ -20,37 +20,51 @@ def eval_market(market="上证", num_years=10):
     # "上证", "深证", "创业板", "科创版"
     :return:
     '''
-    # 股市PE估值, 每月月底一条数据
-    pe_df = ak.stock_market_pe_lg(market)  # "上证", "深证", "创业板", "科创版"
+    def eval_by_metric(df, index_name):
+
+        df2 = df[df['日期'] > hist_start]
+
+        percentile_df = get_percentile(df2, index_name=index_name)
+
+        percentile_df['row_num'] = percentile_df.reset_index().index
+        df3 = percentile_df[percentile_df.index == 'current']
+        return percentile_df, df3
 
     today = datetime.date.today()
     hist_start = today.replace(today.year - num_years)
 
-    df2 = pe_df[pe_df['日期'] > hist_start]
+    # 股市PE估值, 每月月底一条数据
+    pe_df = ak.stock_market_pe_lg(market)  # "上证", "深证", "创业板", "科创版"
 
-    pe_summary_df = get_percentile(df2, index_name='平均市盈率')
+    # df2 = pe_df[pe_df['日期'] > hist_start]
+    pe_percentile_df, pe_current_df = eval_by_metric(pe_df, index_name='平均市盈率')
 
     pb_df = ak.stock_market_pb_lg(market)  # "上证", "深证", "创业板", "科创版"
 
-    df3 = pb_df[pb_df['日期'] > hist_start]
-    pb_summary_df = get_percentile(df3, index_name='市净率')
+    pb_percentile_df, pb_current_df = eval_by_metric(pb_df, index_name='市净率')
 
+    merge_df = pd.merge(pe_current_df[pe_current_df.index == 'current'], pb_current_df[pb_current_df.index == 'current'], on="row_num", how="left")
+
+    # TODO add other market index
     df = ak.stock_index_pe_lg("上证50")  # {"上证50", "沪深300", "上证380", "创业板50", "中证500", "上证180", "深证红利", "深证100", "中证1000", "上证红利", "中证100", "中证800"}
     df2 = df[df['日期'] > hist_start]
     pe_summary_df = get_percentile(df2, index_name='静态市盈率')
+
+    pe_percentile_df2, pe_current_df2 = eval_by_metric(df, index_name='静态市盈率')
 
     return pe_summary_df
 
 
 def get_percentile(df, index_name='平均市盈率'):
-
-    df['rank'] = df[index_name].rank(pct=True)
+    percentile_col_name = index_name + '_分位数'
+    df[percentile_col_name] = df[index_name].rank(pct=True)
     # print(df)
-    temp_df = df.describe()[['指数', index_name, 'rank']]
+    temp_df = df.describe()[['指数', index_name, percentile_col_name]]
 
     temp_df.loc[len(temp_df.index)] = [float(df.tail(1)['指数'].values), float(df.tail(1)[index_name].values),
-                           float(df.tail(1)['rank'].values)]
-    temp_df = temp_df.rename(index={len(temp_df.index) - 1: df.tail(1)['日期']})
+                           float(df.tail(1)[percentile_col_name].values)]
+    # temp_df = temp_df.rename(index={len(temp_df.index) - 1: df.tail(1)['日期']})
+    temp_df = temp_df.rename(index={len(temp_df.index) - 1: 'current'})
 
     return temp_df
 
@@ -445,13 +459,13 @@ def rank_stocks():
              ('600188.SH', '801950.SI', '兖矿能源'), ('601898.SH', '801950.SI', '中煤能源'),
 
              # 石油石化
-             ('601857.SH', '801960.SI', '中国石油'), ('600028.SH', '801960.SI', '中国石油'),
+             ('601857.SH', '801960.SI', '中国石油'), ('600028.SH', '801960.SI', '中国石化'),
              ('600938.SH', '801960.SI', '中国海油'),
 
              # 有色金属
              ('601899.SH', '801050.SI', '紫金矿业'), ('600547.SH', '801050.SI', '山东黄金'),
              ('002466.SZ', '801050.SI', '天齐锂业'), ('002460.SZ', '801050.SI', '赣锋锂业'),
-             ('603799.SZ', '801050.SI', '华友钴业'),
+             ('603799.SH', '801050.SI', '华友钴业'),
 
              # 半导体
              ('601138.SH', '801080.SI', '工业富联'), ('002475.SZ', '801080.SI', '立讯精密'),
@@ -459,12 +473,13 @@ def rank_stocks():
 
              # 芯片
              ('603501.SH', '801080.SI', '韦尔股份'), ('002049.SZ', '801080.SI', '紫光国微'),
+             ('603986.SH', '801080.SI', '兆易创新'), ('300782.SZ', '801080.SI', '卓胜微'),
              # ('688012.SH', '801080.SI', '中微公司'),
              # ('688981.SH', '801080.SI', '中芯国际'),  # ??
 
              # 锂电池
              ('300750.SZ', '801730.SI', '宁德时代'), ('300014.SZ', '801730.SI', '亿纬锂能'),
-             ('300014.SZ', '801730.SI', '国轩高科'),
+             ('002074.SZ', '801730.SI', '国轩高科'),
              # 光伏
              ('601012.SH', '801730.SI', '隆基绿能'), ('600438.SH', '801730.SI', '通威股份'),
              ('002459.SZ', '801730.SI', '晶澳科技'), ('002129.SZ', '801730.SI', 'TCL中环'),
@@ -485,12 +500,12 @@ def rank_stocks():
 
              # 非银金融
              ('601318.SH', '801790.SI', '中国平安'), ('601628.SH', '801790.SI', '中国人寿'),
-             ('600030.SH', '801790.SI', '中信证券'), ('600030.SH', '801790.SI', '中金公司'),
+             ('600030.SH', '801790.SI', '中信证券'), ('601995.SH', '801790.SI', '中金公司'),
 
              # 医药
              ('300760.SZ', '801150.SI', '迈瑞医疗'), ('600276.SH', '801150.SI', '恒瑞医药'),
              ('603259.SH', '801150.SI', '药明康德'), ('000538.SZ', '801150.SI', '云南白药'),
-             ('688185.SZ', '801150.SI', '康希诺'),
+             # ('688185.SH', '801150.SI', '康希诺'),
 
              # 军工
              ('600760.SH', '801740.SI', '中航沈飞'), ('600893.SH', '801740.SI', '航发动力'),
