@@ -14,26 +14,16 @@ pd.set_option('display.max_columns',300)
 pd.set_option('display.max_rows', 300)
 
 
-def eval_by_metric(df, hist_start, index_name):
-    df2 = df[df['日期'] > hist_start]
-
-    percentile_df = get_percentile(df2, index_name=index_name)
-
-    percentile_df['row_num'] = percentile_df.reset_index().index
-    df3 = percentile_df[percentile_df.index == 'current']
-    return percentile_df, df3
-
-
 def eval_markets(num_years=10):
     shangzheng_market = eval_market(market="上证", num_years=num_years)
     shenzheng_market = eval_market(market="深证", num_years=num_years)
     chuangyeban_market = eval_market(market="创业板", num_years=num_years)
 
-    # TODO
-    # kechuangban_market = eval_market(market="科创板", num_years=num_years)
+    kechuangban_market = eval_market(market="科创板", num_years=num_years)
 
     temp = shangzheng_market.append(shenzheng_market)
     temp = temp.append(chuangyeban_market)
+    # temp = temp.append(kechuangban_market)
 
     return temp
 
@@ -51,7 +41,12 @@ def eval_market(market="上证", num_years=10):
     pe_df = ak.stock_market_pe_lg(market)  # "上证", "深证", "创业板", "科创版"
 
     # df2 = pe_df[pe_df['日期'] > hist_start]
-    pe_percentile_df, pe_current_df = eval_by_metric(pe_df, hist_start, index_name='平均市盈率')
+    if market == '科创板':
+        index_name = '市盈率'
+        market = '科创版'
+    else:
+        index_name = '平均市盈率'
+    pe_percentile_df, pe_current_df = eval_by_metric(pe_df, hist_start, index_name=index_name)
 
     pb_df = ak.stock_market_pb_lg(market)  # "上证", "深证", "创业板", "科创版"
 
@@ -63,50 +58,67 @@ def eval_market(market="上证", num_years=10):
     return merge_df
 
 
-def eval_index(market="上证", num_years=10):
+def eval_by_metric(df, hist_start, index_name):
+    df2 = df[df['日期'] > hist_start]
+
+    percentile_df = get_percentile(df2, index_name=index_name)
+
+    percentile_df['row_num'] = percentile_df.reset_index().index
+    df3 = percentile_df[percentile_df.index == 'current']
+    return percentile_df, df3
+
+
+def eval_indexes(num_years=10):
+    index_names = ["上证50", "沪深300", "上证380", "创业板50", "中证500", "上证180", "深证红利", "深证100",
+                   "中证1000", "上证红利", "中证100", "中证800"]
+    merge_df = eval_index(index_name=index_names[0], num_years=num_years)
+    for index_name in index_names[1:]:
+        temp = eval_index(index_name=index_name, num_years=num_years)
+        merge_df = merge_df.append(temp)
+
+    return merge_df
+
+
+def eval_index(index_name="上证50", num_years=10):
     '''
-    Evaluate PB/PE of the market
-    # "上证", "深证", "创业板", "科创版"
+    Evaluate PB/PE of the index
+    # "上证50", "沪深300", "上证380", "创业板50", "中证500", "上证180", "深证红利", "深证100", "中证1000", "上证红利", "中证100", "中证800"
     :return:
     '''
-    # TODO
-
     today = datetime.date.today()
     hist_start = today.replace(today.year - num_years)
 
-    # 股市PE估值, 每月月底一条数据
-    pe_df = ak.stock_market_pe_lg(market)  # "上证", "深证", "创业板", "科创版"
-
-    # Index value by day
-    # pe_df = ak.stock_index_pe_lg(market)
+    # 股市PE估值, 每天一条数据
+    pe_df = ak.stock_index_pe_lg(index_name)
 
     # df2 = pe_df[pe_df['日期'] > hist_start]
-    pe_percentile_df, pe_current_df = eval_by_metric(pe_df, index_name='平均市盈率')
+    pe_percentile_df, pe_current_df = eval_by_metric(pe_df, hist_start, index_name='滚动市盈率')
 
-    pb_df = ak.stock_market_pb_lg(market)  # "上证", "深证", "创业板", "科创版"
+    pb_df = ak.stock_index_pb_lg(index_name)  # "上证", "深证", "创业板", "科创版"
 
-    pb_percentile_df, pb_current_df = eval_by_metric(pb_df, index_name='市净率')
+    pb_percentile_df, pb_current_df = eval_by_metric(pb_df, hist_start, index_name='市净率')
 
     merge_df = pd.merge(pe_current_df[pe_current_df.index == 'current'], pb_current_df[pb_current_df.index == 'current'], on="row_num", how="left")
 
-    # TODO add other market index
-    df = ak.stock_index_pe_lg("上证50")  # {"上证50", "沪深300", "上证380", "创业板50", "中证500", "上证180", "深证红利", "深证100", "中证1000", "上证红利", "中证100", "中证800"}
-    df2 = df[df['日期'] > hist_start]
-    pe_summary_df = get_percentile(df2, index_name='静态市盈率')
+    merge_df['name'] = index_name
 
-    pe_percentile_df2, pe_current_df2 = eval_by_metric(df, index_name='静态市盈率')
-
-    return pe_summary_df
-
+    return merge_df
 
 
 def get_percentile(df, index_name='平均市盈率'):
     percentile_col_name = index_name + '_分位数'
     df[percentile_col_name] = df[index_name].rank(pct=True)
     # print(df)
-    temp_df = df.describe()[['指数', index_name, percentile_col_name]]
 
-    temp_df.loc[len(temp_df.index)] = [float(df.tail(1)['指数'].values), float(df.tail(1)[index_name].values),
+    if '指数' in df.columns:
+        val_name = '指数'
+    else:
+        # 科创板
+        val_name = '总市值'
+
+    temp_df = df.describe()[[val_name, index_name, percentile_col_name]]
+
+    temp_df.loc[len(temp_df.index)] = [float(df.tail(1)[val_name].values), float(df.tail(1)[index_name].values),
                            float(df.tail(1)[percentile_col_name].values)]
     # temp_df = temp_df.rename(index={len(temp_df.index) - 1: df.tail(1)['日期']})
     temp_df = temp_df.rename(index={len(temp_df.index) - 1: 'current'})
@@ -605,8 +617,8 @@ def recall_stocks():
 
 def quant_engine():
     # Step 1. 评估市场情绪
-    eval_markets()
-    eval_index()
+    markets_df = eval_markets()
+    indexes_df = eval_indexes()
 
     # Step 2. 评估行业
     recall_sectors()
