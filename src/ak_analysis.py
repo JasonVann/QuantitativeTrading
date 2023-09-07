@@ -2,6 +2,7 @@ import akshare as ak
 import datetime
 import pandas as pd
 import numpy as np
+import time
 
 '''
 TODO: 
@@ -19,7 +20,7 @@ def eval_markets(num_years=10):
     shenzheng_market = eval_market(market="深证", num_years=num_years)
     chuangyeban_market = eval_market(market="创业板", num_years=num_years)
 
-    kechuangban_market = eval_market(market="科创板", num_years=num_years)
+    # kechuangban_market = eval_market(market="科创板", num_years=num_years)
 
     temp = shangzheng_market.append(shenzheng_market)
     temp = temp.append(chuangyeban_market)
@@ -34,6 +35,8 @@ def eval_market(market="上证", num_years=10):
     # "上证", "深证", "创业板", "科创版"
     :return:
     '''
+    print('to eval {}'.format(market))
+    time.sleep(1)
     today = datetime.date.today()
     hist_start = today.replace(today.year - num_years)
 
@@ -596,7 +599,7 @@ def recall_sectors():
     Recall excellent sectors
     :return:
     '''
-    return
+    return None
 
 
 def recall_stocks():
@@ -611,8 +614,7 @@ def recall_stocks():
     :return:
     '''
 
-
-    return
+    return None
 
 
 def quant_engine():
@@ -621,13 +623,17 @@ def quant_engine():
     indexes_df = eval_indexes()
 
     # Step 2. 评估行业
-    recall_sectors()
+    sectors_df = recall_sectors()
 
     # Step 3. 召回股票
-    recall_stocks()
+    stocks_df = recall_stocks()
 
     # Step 4. 股票排序
-    rank_stocks()
+    rank_df = rank_stocks()
+    today = datetime.datetime.now()
+    rank_df.to_csv('../data/rank_stock_ratio_{}.csv'.format(today.strftime('%Y%m%d_%H%M')))
+
+    return markets_df, indexes_df, sectors_df, stocks_df, rank_df
 
 
 def eval_strategy_hist():
@@ -637,15 +643,20 @@ def eval_strategy_hist():
     '''
 
 
-test_data = ('002714.SZ', '801010.SI', '牧原股份')
-# test_data = ('688981.SH', '801080.SI', '中芯国际')
-test_data = ('601318.SH', '801790.SI', '中国平安')
+def test_rank_stocks():
+    test_data = ('002714.SZ', '801010.SI', '牧原股份')
+    # test_data = ('688981.SH', '801080.SI', '中芯国际')
+    test_data = ('601318.SH', '801790.SI', '中国平安')
 
-# stock_df = eval_stock(test_data[0], test_data[1])
+    # stock_df = eval_stock(test_data[0], test_data[1])
 
-today = datetime.datetime.now()
-print(today)
-rank_df = rank_stocks()
-print(datetime.datetime.now())
+    today = datetime.datetime.now()
+    print(today)
+    rank_df = rank_stocks()
+    print(datetime.datetime.now())
 
-rank_df.to_csv('../data/rank_stock_ratio_{}.csv'.format(today.strftime('%Y%m%d_%H%M')))
+    rank_df.to_csv('../data/rank_stock_ratio_{}.csv'.format(today.strftime('%Y%m%d_%H%M')))
+
+
+markets_df, indexes_df, sectors_df, stocks_df, rank_df = quant_engine()
+# eval_stocks()
