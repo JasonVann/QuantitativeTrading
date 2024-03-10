@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 from jqdata import finance
+from matplotlib import pyplot as plt
 
 
 def get_data(code=None, is_mutual_fund=False, to_save=False):
