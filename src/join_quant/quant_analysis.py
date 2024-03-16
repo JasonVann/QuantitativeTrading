@@ -1,10 +1,12 @@
+
+from jqdata import finance
+from jqdata import finance
+
+from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
-from jqdata import finance
-from matplotlib import pyplot as plt
 
 
-from jqdata import finance
 class Retrieval(object):
     import pandas as pd
 
@@ -13,84 +15,67 @@ class Retrieval(object):
 
     def get_data(self, code):
         if '.' in code:
-            return self.get_stock_data(code)
+            df = self.__get_stock_data(code)
+            df['dt'] = df.index
         else:
-            return self.get_fund_data(code)
+            df = self.get_fund_data(code)
 
-    def get_fund_data(self, code):
+            df['dt'] = pd.to_datetime(df['day'])
 
-        q = query(finance.FUND_NET_VALUE).filter(finance.FUND_NET_VALUE.code == code)
-        df = finance.run_query(q)
-
-        df['dt'] = pd.to_datetime(df['day'])
         df['day_of_week'] = df.dt.dt.dayofweek + 1
         df['day_of_month'] = df.dt.dt.day
         df['week_of_year'] = df.dt.dt.weekofyear
         df['day_of_year'] = df.dt.dt.dayofyear
         df['month'] = df.dt.dt.month
+
+        return df
+
+    def get_fund_data(self, code):
+        q = query(finance.FUND_NET_VALUE).filter(finance.FUND_NET_VALUE.code == code)
+        df = finance.run_query(q)
 
         df['price'] = df['net_value']
 
         return df
 
-    def get_stock_data(self, code='600519.XSHG', end_date=None):
-        df = get_price(code, start_date='2010-01-01', end_date='2024-03-13', frequency='daily')
-
-        price_column_name = 'close'
-
-        df['dt'] = df.index
-        df['day_of_week'] = df.index.dayofweek + 1
-        df['day_of_month'] = df.index.day
-        df['week_of_year'] = df.index.weekofyear
-        df['day_of_year'] = df.index.dayofyear
-        df['month'] = df.index.month
-
+    def __get_stock_data(self, code='600519.XSHG', end_date=None):
+        df = get_price(code, start_date='2010-01-01', end_date='2024-03-13', frequency='daily', fields=['open',
+                'close', 'low', 'high', 'volume', 'money', 'factor', 'high_limit','low_limit', 'avg',
+                'pre_close', 'paused','open_interest'])
         df['price'] = df['close']
         return df
 
+    def get_industry_perfomance(self):
+        # TODO
+        pass
 
-target_lookup = {'hs300': '510300', 'gold': '518880', 'moutai': '600519.XSHG'}
+    def get_stock_info(self):
+        stock = get_security_info('000001.XSHE')
+        print(stock.name)
+        print(stock.industries)
+
+    def get_stock_fundamentals(self, code='000001.XSHE'):
+        # 查询平安银行2014年3-6月份的单季度报表
+        q = query(
+            income.statDate,
+            income.code,
+            income.basic_eps,
+            cash_flow.goods_sale_and_service_render_cash
+        ).filter(
+            income.code == code,
+        )
+
+        ret = get_fundamentals(q, statDate='2014q2')
+        return ret
+
+
+target_lookup = {'沪深300': '510300', 'gold': '518880',
+                 '茅台': '600519.XSHG',
+                 '中国神华': '601088.XSHG',
+                 '中石油': '601857.XSHG'}
 
 # retrieval = Retrieval()
-# df = retrieval.get_fund_data(target_lookup['hs300'])
-#
-# df_moutai = retrieval.get_stock_data()
-
-
-def get_data(code=None, is_mutual_fund=False, to_save=False):
-    import pandas as pd
-
-    if code is None:
-        code = '510300.XSHG'
-
-    if is_mutual_fund:
-        from jqdata import finance
-        q = query(finance.FUND_NET_VALUE).filter(finance.FUND_NET_VALUE.code == code)
-        df = finance.run_query(q)
-        price_column_name = 'net_value'
-
-        df['dt'] = pd.to_datetime(df['day'])
-        df['day_of_week'] = df.dt.dt.dayofweek + 1
-        df['day_of_month'] = df.dt.dt.day
-        df['week_of_year'] = df.dt.dt.weekofyear
-        df['day_of_year'] = df.dt.dt.dayofyear
-        df['month'] = df.dt.dt.month
-    else:
-        # 获取股票510300.XSHG2015年1月的日级交易数据
-        df = get_price(code, start_date='2010-01-01', end_date='2021-10-21', frequency='daily')
-        # df = get_price(code, start_date='2021-09-01', end_date='2021-10-20', frequency='daily')
-        price_column_name = 'close'
-
-        df['dt'] = df.index
-        df['day_of_week'] = df.index.dayofweek + 1
-        df['day_of_month'] = df.index.day
-        df['week_of_year'] = df.index.weekofyear
-        df['day_of_year'] = df.index.dayofyear
-        df['month'] = df.index.month
-
-    df_end_of_year = annual_return(df, is_mutual_fund)
-    plot_df(df_end_of_year, is_mutual_fund)
-    return df, df_end_of_year
+# df = retrieval.get_data(target_lookup['hs300'])
 
 
 def calculate_return(df, code):
@@ -107,31 +92,24 @@ def calculate_return(df, code):
     return df_year
 
 
-def compare():
+def compare_target_returns():
     retrieval = Retrieval()
 
-    # TODO
-    df_temp = None
-    # for name, code in target_lookup.items():
-    #     df = retrieval.get_data(code)
-    #     df_year = calculate_return(df)
+    df_all = None
+    last_names = []
+    for name, code in target_lookup.items():
+        df = retrieval.get_data(code)
+        df_year = calculate_return(df, name)
+        if df_all is not None:
+            df_all = df_all[['dt'] + last_names].merge(df_year[['dt', name + '_yoy']], on='dt', how='left')
+        else:
+            df_all = df_year
+        last_names.append(name + '_yoy')
 
-    df_hs300 = retrieval.get_data(target_lookup['hs300'])
-    df_hs300_year = calculate_return(df_hs300, 'hs300')
-
-    df_gold = retrieval.get_data(target_lookup['gold'])
-    df_gold_year = calculate_return(df_gold, 'gold')
-
-    df_moutai = retrieval.get_data(target_lookup['moutai'])
-    df_moutai_year = calculate_return(df_moutai, 'moutai')
-
-    df_all = df_hs300_year[['dt', 'hs300_yoy']].merge(df_gold_year[['dt', 'gold_yoy']], on='dt', how='left')\
-        .merge(df_moutai_year[['dt', 'moutai_yoy']], on='dt', how='left')
-
-    return df_all, df_hs300_year, df_gold_year, df_moutai_year
+    return df_all
 
 
-df_all, df_all, df_hs300_year, df_gold_year, df_moutai_year = compare()
+df_all = compare_target_returns()
 df_all.plot(x='dt')
 
 
