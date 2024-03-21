@@ -27,6 +27,9 @@ class Retrieval(object):
         df['week_of_year'] = df.dt.dt.weekofyear
         df['day_of_year'] = df.dt.dt.dayofyear
         df['month'] = df.dt.dt.month
+        df['year'] = df.dt.dt.year
+
+        df['is_end_of_year'] = df['year'] != df['year'].shift(-1)
 
         return df
 
@@ -69,37 +72,47 @@ class Retrieval(object):
         return ret
 
 
-target_lookup = {'沪深300': '510300', 'gold': '518880',
+portfolio = {'沪深300': '510300', 'gold': '518880',
+                 '华夏沪深300': '000051', '易方达上证50A': '110003',
+                '博时标普500': '050025', '广发纳斯达克100': '006479',
                  '茅台': '600519.XSHG',
                  '中国神华': '601088.XSHG',
                  '中石油': '601857.XSHG'}
 
-# retrieval = Retrieval()
-# df = retrieval.get_data(target_lookup['hs300'])
+retrieval = Retrieval()
+df = retrieval.get_data(portfolio['华夏沪深300'])
+df = retrieval.get_data(portfolio['茅台'])
 
 
 def calculate_return(df, code):
     df['daily_return'] = df['price'].pct_change()
+    df['weekly_return'] = df['price'].pct_change(periods=5)
+    df['monthly_return'] = df['price'].pct_change(periods=22)
+    df['quarterly_return'] = df['price'].pct_change(periods=70)
     df['yearly_return'] = df['price'].pct_change(periods=242)
 
-    df_year = df.groupby(df.dt.dt.year).apply(
-        lambda group: group[group['day_of_year'] == group['day_of_year'].max()]
-    )
+    # df_year = df.groupby(df.dt.dt.year).apply(
+    #     lambda group: group[group['day_of_year'] == group['day_of_year'].max()]
+    # )
+
+    df_year = df[df['is_end_of_year']]
 
     df_year['yearly_return'] = df_year['price'].pct_change() * 100
     df_year[code+'_yoy'] = df_year['yearly_return']
 
-    return df_year
+    return df_year, df
 
 
 def compare_target_returns():
     retrieval = Retrieval()
 
+    # TODO fix date misalignment
     df_all = None
     last_names = []
-    for name, code in target_lookup.items():
+    for name, code in portfolio.items():
         df = retrieval.get_data(code)
-        df_year = calculate_return(df, name)
+        df_year, df2 = calculate_return(df, name)
+        # TODO fix merge
         if df_all is not None:
             df_all = df_all[['dt'] + last_names].merge(df_year[['dt', name + '_yoy']], on='dt', how='left')
         else:
