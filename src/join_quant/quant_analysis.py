@@ -1,16 +1,18 @@
 
+import datetime
 from jqdata import finance
 
 from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
-import datetime
+
+RISK_FREE_INTEREST_RATE = 0.02
 
 class Retriever(object):
     def __init__(self):
         pass
 
-    def get_data(self, code):
+    def get_data(self, code, start_date=None):
         if '.' in code:
             df = self.__get_stock_data(code)
             df['dt'] = df.index
@@ -28,13 +30,18 @@ class Retriever(object):
 
         df['is_end_of_year'] = df['year'] != df['year'].shift(-1)
 
+        if start_date is not None:
+            df = df[df.dt >= start_date]
+            df.reset_index(inplace=True)
+
         return df
 
     def get_fund_data(self, code):
         q = query(finance.FUND_NET_VALUE).filter(finance.FUND_NET_VALUE.code == code)
         df = finance.run_query(q)
 
-        df['price'] = df['net_value']
+        # df['price'] = df['net_value']
+        df['price'] = df['sum_value']   # 累计单位净值＝单位净值＋成立以来每份累计分红派息的金额
 
         return df
 
@@ -87,52 +94,97 @@ class Metric(object):
 
         return dd
 
+    @staticmethod
+    def calculate_return(df):
+        df['daily_return'] = df['price'].pct_change()
+        df['weekly_return'] = df['price'].pct_change(periods=5)
+        df['monthly_return'] = df['price'].pct_change(periods=22)
+        df['quarterly_return'] = df['price'].pct_change(periods=70)
+        df['half_year_return'] = df['price'].pct_change(periods=121)
+        df['yearly_return'] = df['price'].pct_change(periods=242)
+        df['yearly_return3'] = df['price'].pct_change(periods=242 * 3)
+        df['yearly_return5'] = df['price'].pct_change(periods=242 * 5)
+
+        # df_year = df.groupby(df.dt.dt.year).apply(
+        #     lambda group: group[group['day_of_year'] == group['day_of_year'].max()]
+        # )
+
+        df['dd'] = Metric.get_drawdown(df['price'])
+        mdd = np.nanmin(df['dd'])  # 最大回撤
+
+        annret = np.nanmean(df['daily_return']) * 242
+        annvol = np.nanstd(df['daily_return']) * np.sqrt(242)
+        sr = (annret - RISK_FREE_INTEREST_RATE) / annvol
+        calmar = annret / -mdd
+
+        df['mdd'] = mdd
+        df['annret'] = annret
+        df['annvol'] = annvol
+        df['sr'] = sr
+        df['calmar'] = calmar
+
+        return df
+
+    @staticmethod
+    def calculate_yearly_return(df):
+
+        df_year = df[df['is_end_of_year']]
+        df_year['yearly_return'] = df_year['price'].pct_change() * 100
+
+        return df_year
+
+
+class Strategy(object):
+    def __init__(self):
+        pass
+
+    @staticmethod
+    def calculate_pe(df, pe_rank_window=242*5):
+        pctrank = lambda x: x.rank(pct=True).iloc[-1]
+        df['pe_rank'] = df['index_pe'].rolling(window=pe_rank_window).apply(pctrank)
+
 
 portfolio = {
-            # '沪深300': '510300',
-             'gold': '518880',
-                 '华夏沪深300': '000051', '易方达上证50A': '110003',
-                '博时标普500': '050025', '广发纳斯达克100': '006479',
-                 '茅台': '600519.XSHG',
+            # '沪深300': '510300', 'gold': '518880',
+            '广发中债国开行债券': '003376', '鹏华丰禄债券': '003547',
+
+            '华夏沪深300': '000051', '易方达上证50A': '110003',
+            '富国上证综指': '100053', '华夏科创50': '011612',
+            '富国中证煤炭': '161032', '富国中证红利': '009052',
+            '交银施罗德中证海外互联': '164906', '天弘恒生科技': '012349',
+
+            '博时标普500': '050025', '广发纳斯达克100': '006479',
+            '国泰黄金ETF': '000218', '广发道琼斯美国石油开发与生产指数': '162719',
+            }
+
+index_list = {
+    ''
+}
+
+stock_list = {'茅台': '600519.XSHG',
                  '中国神华': '601088.XSHG',
-                 '中石油': '601857.XSHG'}
+                 '中石油': '601857.XSHG'
+              }
 
 def test_retrieval():
     retrieval = Retriever()
-    df = retrieval.get_data(portfolio['华夏沪深300'])
-    df2 = retrieval.get_data(portfolio['茅台'])
+    df = retrieval.get_data(portfolio['华夏沪深300'], start_date='2019-01-01')
+    df2 = retrieval.get_data(portfolio['茅台'], start_date='2019-01-01')
 
 
-def calculate_return(df):
-    df['daily_return'] = df['price'].pct_change()
-    df['weekly_return'] = df['price'].pct_change(periods=5)
-    df['monthly_return'] = df['price'].pct_change(periods=22)
-    df['quarterly_return'] = df['price'].pct_change(periods=70)
-    df['half_year_return'] = df['price'].pct_change(periods=121)
-    df['yearly_return'] = df['price'].pct_change(periods=242)
-    df['yearly_return3'] = df['price'].pct_change(periods=242 * 3)
-    df['yearly_return5'] = df['price'].pct_change(periods=242 * 5)
-
-    # df_year = df.groupby(df.dt.dt.year).apply(
-    #     lambda group: group[group['day_of_year'] == group['day_of_year'].max()]
-    # )
-
-    df_year = df[df['is_end_of_year']]
-
-    df_year['yearly_return'] = df_year['price'].pct_change() * 100
-
-    return df_year, df
-
-def get_portfolio_snapshot():
+def get_portfolio_snapshot(start_date=None):
     retrieval = Retriever()
     result = None
     for name, code in portfolio.items():
-        df = retrieval.get_data(code)
-        df_year, df2 = calculate_return(df)
+        print(name, code)
+        df = retrieval.get_data(code, start_date=start_date)
+        print(df.tail())
+        df2 = Metric.calculate_return(df)
         df2['name'] = name
         df2['code'] = code
         df_temp = df2[['dt', 'name', 'code', 'price', 'daily_return', 'weekly_return', 'monthly_return', 'quarterly_return',
-             'half_year_return', 'yearly_return','yearly_return3', 'yearly_return5']].tail(n=1)
+             'half_year_return', 'yearly_return','yearly_return3', 'yearly_return5',
+                       'annret', 'annvol', 'sr', 'mdd', 'calmar']].tail(n=1)
         if result is None:
             result = df_temp
         else:
@@ -140,7 +192,12 @@ def get_portfolio_snapshot():
 
     return result
 
-df_portfolio = get_portfolio_snapshot()
+
+df_portfolio = get_portfolio_snapshot(start_date='2019-03-21')
+
+today = datetime.datetime.now()
+
+df_portfolio.to_csv('./data/portfolio_{}.csv'.format(today.strftime('%Y%m%d_%H%M')))
 
 
 def compare_target_returns():
@@ -151,7 +208,7 @@ def compare_target_returns():
     last_names = []
     for name, code in portfolio.items():
         df = retrieval.get_data(code)
-        df_year, df2 = calculate_return(df)
+        df_year = Metric.calculate_yearly_return(df)
         df_year[code + '_yoy'] = df_year['yearly_return']
         # TODO fix merge
         if df_all is not None:
@@ -163,8 +220,8 @@ def compare_target_returns():
     return df_all
 
 
-df_all = compare_target_returns()
-df_all.plot(x='dt')
+# df_all = compare_target_returns()
+# df_all.plot(x='dt')
 
 
 
@@ -203,5 +260,5 @@ def test_wine():
     df, df_end_of_year = get_data(code='600519.XSHG', is_mutual_fund=False)
 
 
-test_wine()
+# test_wine()
 
