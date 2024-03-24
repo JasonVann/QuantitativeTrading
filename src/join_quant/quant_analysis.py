@@ -1,15 +1,12 @@
 
 from jqdata import finance
-from jqdata import finance
 
 from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
+import datetime
 
-
-class Retrieval(object):
-    import pandas as pd
-
+class Retriever(object):
     def __init__(self):
         pass
 
@@ -42,7 +39,8 @@ class Retrieval(object):
         return df
 
     def __get_stock_data(self, code='600519.XSHG', end_date=None):
-        df = get_price(code, start_date='2010-01-01', end_date='2024-03-13', frequency='daily', fields=['open',
+        end_date = datetime.datetime.now().strftime('%Y-%m-%d')
+        df = get_price(code, start_date='2010-01-01', end_date=end_date, frequency='daily', fields=['open',
                 'close', 'low', 'high', 'volume', 'money', 'factor', 'high_limit','low_limit', 'avg',
                 'pre_close', 'paused','open_interest'])
         df['price'] = df['close']
@@ -72,24 +70,48 @@ class Retrieval(object):
         return ret
 
 
-portfolio = {'沪深300': '510300', 'gold': '518880',
+class Metric(object):
+    def __init__(self):
+        pass
+
+    @staticmethod
+    def get_drawdown(p):
+        """
+        计算净值回撤
+        """
+        T = len(p)
+        hmax = [p[0]]
+        for t in range(1, T):
+            hmax.append(np.nanmax([p[t], hmax[t - 1]]))
+        dd = [p[t] / hmax[t] - 1 for t in range(T)]
+
+        return dd
+
+
+portfolio = {
+            # '沪深300': '510300',
+             'gold': '518880',
                  '华夏沪深300': '000051', '易方达上证50A': '110003',
                 '博时标普500': '050025', '广发纳斯达克100': '006479',
                  '茅台': '600519.XSHG',
                  '中国神华': '601088.XSHG',
                  '中石油': '601857.XSHG'}
 
-retrieval = Retrieval()
-df = retrieval.get_data(portfolio['华夏沪深300'])
-df = retrieval.get_data(portfolio['茅台'])
+def test_retrieval():
+    retrieval = Retriever()
+    df = retrieval.get_data(portfolio['华夏沪深300'])
+    df2 = retrieval.get_data(portfolio['茅台'])
 
 
-def calculate_return(df, code):
+def calculate_return(df):
     df['daily_return'] = df['price'].pct_change()
     df['weekly_return'] = df['price'].pct_change(periods=5)
     df['monthly_return'] = df['price'].pct_change(periods=22)
     df['quarterly_return'] = df['price'].pct_change(periods=70)
+    df['half_year_return'] = df['price'].pct_change(periods=121)
     df['yearly_return'] = df['price'].pct_change(periods=242)
+    df['yearly_return3'] = df['price'].pct_change(periods=242 * 3)
+    df['yearly_return5'] = df['price'].pct_change(periods=242 * 5)
 
     # df_year = df.groupby(df.dt.dt.year).apply(
     #     lambda group: group[group['day_of_year'] == group['day_of_year'].max()]
@@ -98,20 +120,39 @@ def calculate_return(df, code):
     df_year = df[df['is_end_of_year']]
 
     df_year['yearly_return'] = df_year['price'].pct_change() * 100
-    df_year[code+'_yoy'] = df_year['yearly_return']
 
     return df_year, df
 
+def get_portfolio_snapshot():
+    retrieval = Retriever()
+    result = None
+    for name, code in portfolio.items():
+        df = retrieval.get_data(code)
+        df_year, df2 = calculate_return(df)
+        df2['name'] = name
+        df2['code'] = code
+        df_temp = df2[['dt', 'name', 'code', 'price', 'daily_return', 'weekly_return', 'monthly_return', 'quarterly_return',
+             'half_year_return', 'yearly_return','yearly_return3', 'yearly_return5']].tail(n=1)
+        if result is None:
+            result = df_temp
+        else:
+            result = result.append(df_temp)
+
+    return result
+
+df_portfolio = get_portfolio_snapshot()
+
 
 def compare_target_returns():
-    retrieval = Retrieval()
+    retrieval = Retriever()
 
     # TODO fix date misalignment
     df_all = None
     last_names = []
     for name, code in portfolio.items():
         df = retrieval.get_data(code)
-        df_year, df2 = calculate_return(df, name)
+        df_year, df2 = calculate_return(df)
+        df_year[code + '_yoy'] = df_year['yearly_return']
         # TODO fix merge
         if df_all is not None:
             df_all = df_all[['dt'] + last_names].merge(df_year[['dt', name + '_yoy']], on='dt', how='left')
