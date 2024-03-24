@@ -36,6 +36,10 @@ class Retriever(object):
 
         return df
 
+    @staticmethod
+    def get_industries_for_stock(security_list, date):
+        return get_industry(security=['000001.XSHE', '000002.XSHE'], date="2018-06-01")
+
     def get_fund_data(self, code):
         q = query(finance.FUND_NET_VALUE).filter(finance.FUND_NET_VALUE.code == code)
         df = finance.run_query(q)
@@ -67,14 +71,57 @@ class Retriever(object):
         q = query(
             income.statDate,
             income.code,
-            income.basic_eps,
-            cash_flow.goods_sale_and_service_render_cash
+
         ).filter(
             income.code == code,
         )
 
         ret = get_fundamentals(q, statDate='2014q2')
         return ret
+
+    # 获取多年的季度度数据
+    def get_fianancial_reports(self):
+
+        def get_more_state_fund(q_object, year_list):
+            df_list = []
+            for year in year_list:
+                rets = [get_fundamentals(q, statDate=str(year) + 'q' + str(i)) for i in range(1, 5)]
+                df = pd.concat(rets).set_index('statDate')  # 个人习惯
+                df_list.append(df)
+            df_ = pd.concat(df_list, keys=year_list, axis=0)  # axis=1或axis=0,依据个人习惯
+            return df_
+
+        # https://www.joinquant.com/help/api/help#Stock:%E8%8E%B7%E5%8F%96%E5%8D%95%E5%AD%A3%E5%BA%A6%E5%B9%B4%E5%BA%A6%E8%B4%A2%E5%8A%A1%E6%95%B0%E6%8D%AE
+        q = query(
+            indicator.code,
+            indicator.statDate,  # 财报统计的季度的最后一天
+
+            income.total_operating_revenue,  # 营业总收入
+            income.operating_revenue,  # 营业收入
+            income.total_operating_cost,  # 营业总成本=主营业务成本+其他业务成本+利息支出+手续费及佣金支出+退保金+赔付支出净额
+                # +提取保险合同准备金净额+保单红利支出+分保费用+营业税金及附加+销售费用+管理费用+财务费用+资产减值损失+其他
+            income.basic_eps,
+
+            indicator.inc_total_revenue_year_on_year,
+            indicator.inc_net_profit_year_on_year, # 净利润同比增长率(%)
+            indicator.eps,
+            indicator.adjusted_profit,  # 公司正常经营损益之外的一次性或偶发性损益
+            indicator.operating_profit,
+            indicator.roa,  # 净利润*2/（期初总资产+期末总资产）
+            indicator.roe,
+            indicator.inc_return,  # 净资产收益率(扣除非经常损益)(%)
+            indicator.gross_profit_margin, # 销售毛利率(%),	毛利/营业收入
+            indicator.net_profit_margin,  # 销售净利率(%), 净利润/营业收入
+
+            # 现金流量表
+            cash_flow.goods_sale_and_service_render_cash,
+
+            indicator.pubDate,
+        ).filter(
+            income.code.in_(['000001.XSHE', '601857.XSHG']))  # 带后缀.XSHE 深/.XSHG 沪
+
+        df = get_more_state_fund(q, ['2022', '2023'])
+        return
 
 
 class Metric(object):
